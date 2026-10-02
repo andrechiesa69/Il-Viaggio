@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Realtà Aumentata - Birre e Relais</title>
 
+  <!-- A-Frame e MindAR -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
@@ -15,7 +16,7 @@
       -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
     }
 
-    /* ---- Mirino di scansione con angoli bianchi ---- */
+    /* ---- Mirino di scansione ---- */
     #scanner-overlay {
       position: fixed; inset: 0; z-index: 10; pointer-events: none;
       display: flex; justify-content: center; align-items: center;
@@ -41,7 +42,7 @@
       background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 20px;
     }
 
-    /* ---- Pannello fisso sullo schermo (se il target esce dall'inquadratura) ---- */
+    /* ---- Pannello fisso sticky ---- */
     #sticky {
       position: fixed; left: 50%; top: 46%; transform: translate(-50%, -50%);
       z-index: 30; display: none; flex-direction: column; align-items: center; gap: 16px;
@@ -59,67 +60,57 @@
   </style>
 
   <script>
-    AFRAME.registerComponent('ar-logo', {
+    AFRAME.registerComponent('ar-controller', {
       init: function () {
         const sceneEl = this.el;
         const $ = (id) => document.getElementById(id);
 
-        const target     = $('target');
-        const logoGroup  = $('logo-group');
-        const photos     = $('photos');
-        const hitLogo    = $('hit-logo');
-        const hitBirra   = $('hit-birra');
-        const hitRelais  = $('hit-relais');
-        const frame      = $('scan-frame');
-        const text       = $('instruction-text');
-        const sticky     = $('sticky');
-        const stickyLogo = $('sticky-logo');
+        const target      = $('target');
+        const logoGroup   = $('logo-group');
+        const photos      = $('photos');
+        const frame       = $('scan-frame');
+        const text        = $('instruction-text');
+        const sticky      = $('sticky');
+        const stickyLogo  = $('sticky-logo');
         const stickyCards = $('sticky-cards');
 
-        const ENABLE_STICKY = true;   // false = nessun pannello quando il target esce dall'inquadratura
-        const HOLD_MS    = 30000;     // durata del pannello (30 secondi)
-        const LOST_DELAY = 600;       // ignora perdite brevi del target (ms)
-        const SNAP_PX    = 150;       // tocco "calamita": distanza massima dall'elemento (pixel)
+        const ENABLE_STICKY = true;
+        const HOLD_MS       = 30000;
+        const LOST_DELAY    = 600;
 
         const TXT_SCAN   = "Inquadra il logo per attivare la realtà aumentata";
         const TXT_LOGO   = "Tocca il logo";
         const TXT_CHOOSE = "Tocca Birre o Relais";
 
-        let found = false, revealed = false, lostTimer = null, hideTimer = null, hideScaleTimer = null;
+        let found = false, revealed = false, lostTimer = null, hideTimer = null;
 
-        // ---------- stato: logo da solo / logo + foto ----------
         function applyState(animate) {
-          const dur = animate ? 450 : 1;
-          clearTimeout(hideScaleTimer);
+          const dur = animate ? 400 : 1;
           if (revealed) {
             photos.setAttribute('visible', 'true');
-            photos.setAttribute('scale', '0.001 0.001 0.001');
-            photos.setAttribute('animation__s', { property: 'scale', to: '1 1 1', dur: dur, easing: 'easeOutBack' });
-            logoGroup.setAttribute('animation__p', { property: 'position', to: '0 0.33 0.05', dur: dur, easing: 'easeInOutQuad' });
-            logoGroup.setAttribute('animation__k', { property: 'scale', to: '0.4 0.4 0.4', dur: dur, easing: 'easeInOutQuad' });
-            hitLogo.setAttribute('position', '0 0.33 0.12');
-            hitLogo.setAttribute('width', '0.6');
-            hitLogo.setAttribute('height', '0.45');
+            photos.setAttribute('animation', `property: scale; to: 1 1 1; dur: ${dur}; easing: easeOutBack`);
+            logoGroup.setAttribute('animation__pos', `property: position; to: 0 0.38 0.05; dur: ${dur}; easing: easeInOutQuad`);
+            logoGroup.setAttribute('animation__scl', `property: scale; to: 0.45 0.45 0.45; dur: ${dur}; easing: easeInOutQuad`);
             text.innerText = TXT_CHOOSE;
           } else {
-            photos.setAttribute('animation__s', { property: 'scale', to: '0.001 0.001 0.001', dur: dur, easing: 'easeInQuad' });
-            hideScaleTimer = setTimeout(() => { if (!revealed) photos.setAttribute('visible', 'false'); }, dur + 30);
-            logoGroup.setAttribute('animation__p', { property: 'position', to: '0 0 0.05', dur: dur, easing: 'easeInOutQuad' });
-            logoGroup.setAttribute('animation__k', { property: 'scale', to: '1 1 1', dur: dur, easing: 'easeInOutQuad' });
-            hitLogo.setAttribute('position', '0 0 0.12');
-            hitLogo.setAttribute('width', '1.1');
-            hitLogo.setAttribute('height', '0.85');
+            photos.setAttribute('animation', `property: scale; to: 0.001 0.001 0.001; dur: ${dur}; easing: easeInQuad`);
+            setTimeout(() => { if (!revealed) photos.setAttribute('visible', 'false'); }, dur + 50);
+            logoGroup.setAttribute('animation__pos', `property: position; to: 0 0 0.05; dur: ${dur}; easing: easeInOutQuad`);
+            logoGroup.setAttribute('animation__scl', `property: scale; to: 1 1 1; dur: ${dur}; easing: easeInOutQuad`);
             text.innerText = TXT_LOGO;
           }
           stickyCards.classList.toggle('show', revealed);
         }
 
-        function toggle() { revealed = !revealed; applyState(true); }
+        function toggle() {
+          revealed = !revealed;
+          applyState(true);
+        }
 
-        // ---------- target trovato / perso ----------
         target.addEventListener('targetFound', () => {
           found = true;
-          clearTimeout(lostTimer); clearTimeout(hideTimer);
+          clearTimeout(lostTimer);
+          clearTimeout(hideTimer);
           frame.classList.add('hidden');
           sticky.classList.remove('show');
           text.classList.remove('hidden');
@@ -147,63 +138,47 @@
           }, LOST_DELAY);
         });
 
-        // Il logo nel pannello fisso apre/chiude le foto
-        stickyLogo.addEventListener('click', () => {
-          revealed = !revealed;
-          stickyCards.classList.toggle('show', revealed);
-          text.innerText = revealed ? TXT_CHOOSE : TXT_LOGO;
-          clearTimeout(hideTimer);
-          hideTimer = setTimeout(() => {
-            sticky.classList.remove('show');
-            frame.classList.remove('hidden');
-            text.innerText = TXT_SCAN;
-          }, HOLD_MS);
-        });
+        stickyLogo.addEventListener('click', toggle);
 
-        // ---------- tocco sugli elementi AR: raycast + "calamita" sul più vicino ----------
-        const activeHits = () => revealed ? [hitLogo, hitBirra, hitRelais] : [hitLogo];
-
-        const handleTap = (e) => {
+        // Gestione tocco sugli oggetti 3D
+        window.addEventListener('pointerdown', (e) => {
           if (!found) return;
-          if (e.target.closest && e.target.closest('#sticky')) return;
+          if (e.target.closest('#sticky')) return;
+
           const camera = sceneEl.camera;
           if (!camera) return;
 
-          const x = e.clientX, y = e.clientY;
-          const ndc = new THREE.Vector2((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
+          const mouse = new THREE.Vector2(
+            (e.clientX / window.innerWidth) * 2 - 1,
+            -(e.clientY / window.innerHeight) * 2 + 1
+          );
+
           const raycaster = new THREE.Raycaster();
-          raycaster.setFromCamera(ndc, camera);
+          raycaster.setFromCamera(mouse, camera);
 
-          const els = activeHits();
-          const hits = raycaster.intersectObjects(els.map(el => el.object3D), true);
-          let chosen = null;
+          const clickableObjects = [];
+          const logoMesh = $('plane-logo').object3D;
+          const birraMesh = $('plane-birra').object3D;
+          const relaisMesh = $('plane-relais').object3D;
 
-          if (hits.length > 0) {
-            let el = hits[0].object.el;
-            while (el && !el.classList.contains('hit')) el = el.parentElement;
-            chosen = el;
-          } else {
-            let bestD = Infinity;
-            els.forEach(el => {
-              const v = new THREE.Vector3();
-              el.object3D.getWorldPosition(v);
-              v.project(camera);
-              const sx = (v.x + 1) / 2 * window.innerWidth;
-              const sy = (1 - v.y) / 2 * window.innerHeight;
-              const d = Math.hypot(sx - x, sy - y);
-              if (d < bestD) { bestD = d; chosen = el; }
-            });
-            if (bestD > SNAP_PX) chosen = null;
+          if (logoMesh) clickableObjects.push(logoMesh);
+          if (revealed) {
+            if (birraMesh) clickableObjects.push(birraMesh);
+            if (relaisMesh) clickableObjects.push(relaisMesh);
           }
 
-          if (!chosen) return;
-          if (chosen.dataset.action === 'toggle') { toggle(); return; }
-          if (chosen.dataset.url) window.location.href = chosen.dataset.url;
-        };
+          const intersects = raycaster.intersectObjects(clickableObjects, true);
 
-        sceneEl.addEventListener('loaded', () => {
-          window.addEventListener('pointerdown', handleTap);
-          photos.setAttribute('visible', 'false');
+          if (intersects.length > 0) {
+            const hitObj = intersects[0].object;
+            if (hitObj === logoMesh || hitObj.parent === logoMesh) {
+              toggle();
+            } else if (hitObj === birraMesh || hitObj.parent === birraMesh) {
+              window.location.href = "https://online.fliphtml5.com/kyszr/qcoy/#p=1";
+            } else if (hitObj === relaisMesh || hitObj.parent === relaisMesh) {
+              window.location.href = "https://www.youtube.com/watch?v=_ByuKkfsw5o";
+            }
+          }
         });
       }
     });
@@ -223,18 +198,18 @@
   </div>
   <div id="instruction-text">Inquadra il logo per attivare la realtà aumentata</div>
 
-  <!-- Pannello fisso (compare se il logo esce dall'inquadratura, per 30 secondi) -->
+  <!-- Pannello fisso (fallback quando il target viene perso) -->
   <div id="sticky">
     <button id="sticky-logo" type="button" aria-label="Logo"><img src="./logo.png" alt="Logo"></button>
     <div id="sticky-cards">
-      <a class="card" href="https://online.fliphtml5.com/kyszr/qcoy/#p=1"><img src="./birra.jpg" alt="Birre"><span>Birre</span></a>
-      <a class="card" href="https://www.youtube.com/watch?v=_ByuKkfsw5o"><img src="./relais.jpg" alt="Relais"><span>Relais</span></a>
+      <a class="card" href="https://online.fliphtml5.com/kyszr/qcoy/#p=1" target="_blank"><img src="./birra.jpg" alt="Birre"><span>Birre</span></a>
+      <a class="card" href="https://www.youtube.com/watch?v=_ByuKkfsw5o" target="_blank"><img src="./relais.jpg" alt="Relais"><span>Relais</span></a>
     </div>
   </div>
 
   <a-scene
-    ar-logo
-    mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001; missTolerance: 15; warmupTolerance: 5;"
+    ar-controller
+    mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no; autoStart: true;"
     color-space="sRGB"
     renderer="colorManagement: true, physicallyCorrectLights"
     vr-mode-ui="enabled: false"
@@ -248,35 +223,22 @@
 
     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-    <!-- Target: logo 593x421 -> larghezza 1, altezza 0.71 -->
+    <!-- Target AR -->
     <a-entity id="target" mindar-image-target="targetIndex: 0">
 
-      <!-- LOGO in AR -->
+      <!-- LOGO -->
       <a-entity id="logo-group" position="0 0 0.05">
-        <a-plane width="1" height="0.71"
-                 material="src: #img-logo; transparent: true; alphaTest: 0.05; shader: flat"></a-plane>
+        <a-plane id="plane-logo" width="1" height="0.71"
+                 material="src: #img-logo; transparent: true; alphaTest: 0.5; shader: flat"></a-plane>
       </a-entity>
 
-      <!-- FOTO (compaiono toccando il logo) -->
-      <a-entity id="photos" position="0 -0.12 0.08" visible="false" scale="0.001 0.001 0.001">
-        <a-plane position="-0.27 0 0" width="0.52" height="0.345"
+      <!-- FOTO (compaiono dopo il tocco sul logo) -->
+      <a-entity id="photos" position="0 -0.15 0.08" visible="false" scale="0.001 0.001 0.001">
+        <a-plane id="plane-birra" position="-0.28 0 0" width="0.5" height="0.33"
                  material="src: #img-birra; shader: flat"></a-plane>
-        <a-plane position="0.27 0 0" width="0.52" height="0.345"
+        <a-plane id="plane-relais" position="0.28 0 0" width="0.5" height="0.33"
                  material="src: #img-relais; shader: flat"></a-plane>
       </a-entity>
-
-      <!-- AREE DI TOCCO invisibili, più grandi degli elementi visibili -->
-      <a-plane id="hit-logo" class="hit" data-action="toggle"
-               position="0 0 0.12" width="1.1" height="0.85"
-               material="transparent: true; opacity: 0; side: double"></a-plane>
-
-      <a-plane id="hit-birra" class="hit" data-url="https://online.fliphtml5.com/kyszr/qcoy/#p=1"
-               position="-0.27 -0.12 0.12" width="0.56" height="0.42"
-               material="transparent: true; opacity: 0; side: double"></a-plane>
-
-      <a-plane id="hit-relais" class="hit" data-url="https://www.youtube.com/watch?v=_ByuKkfsw5o"
-               position="0.27 -0.12 0.12" width="0.56" height="0.42"
-               material="transparent: true; opacity: 0; side: double"></a-plane>
 
     </a-entity>
 
