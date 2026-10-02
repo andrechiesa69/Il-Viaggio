@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Realtà Aumentata - Birre e Relais</title>
 
-  <!-- A-Frame e MindAR -->
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <!-- Librerie stabili A-Frame e MindAR -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
     html, body {
@@ -25,28 +25,7 @@
       z-index: -2 !important;
     }
 
-    /* ---- Overlay di Scansione ---- */
-    #scanner-overlay {
-      position: fixed; inset: 0; z-index: 10; pointer-events: none;
-      display: flex; justify-content: center; align-items: center;
-    }
-    .scan-frame {
-      width: 72vw; height: 51vw; max-width: 420px; max-height: 298px; position: relative;
-    }
-    .corner {
-      position: absolute; width: 30px; height: 30px; border-color: #fff; border-style: solid;
-    }
-    .top-left     { top: 0;    left: 0;  border-width: 5px 0 0 5px; }
-    .top-right    { top: 0;    right: 0; border-width: 5px 5px 0 0; }
-    .bottom-left  { bottom: 0; left: 0;  border-width: 0 0 5px 5px; }
-    .bottom-right { bottom: 0; right: 0; border-width: 0 5px 5px 0; }
-    .scan-line {
-      position: absolute; width: 100%; height: 2px; background: #fff; box-shadow: 0 0 8px #fff;
-      animation: scanAnim 2s ease-in-out infinite alternate;
-    }
-    @keyframes scanAnim { 0% { top: 5%; } 100% { top: 95%; } }
-    .hidden { display: none !important; }
-
+    /* Overlay Scritta Istruzioni */
     #instruction-text {
       position: fixed; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); left: 50%;
       transform: translateX(-50%); z-index: 20; pointer-events: none;
@@ -55,76 +34,48 @@
       padding: 10px 20px; border-radius: 20px;
     }
 
-    /* ---- Pannello Fallback Sticky ---- */
+    /* Menu Sticky Fallback */
     #sticky {
-      position: fixed; left: 50%; top: 46%; transform: translate(-50%, -50%);
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
       z-index: 30; display: none; flex-direction: column; align-items: center; gap: 16px;
-      padding: 18px; width: min(92vw, 520px);
+      padding: 20px; width: min(90vw, 400px);
       background: rgba(255,255,255,0.95); border-radius: 22px; box-shadow: 0 8px 28px rgba(0,0,0,0.45);
     }
     #sticky.show { display: flex; }
-    #sticky-logo { border: 0; background: transparent; padding: 4px; cursor: pointer; }
-    #sticky-logo img { display: block; width: min(34vw, 150px); height: auto; }
-    #sticky-cards { display: none; width: 100%; gap: 12px; justify-content: center; }
-    #sticky-cards.show { display: flex; }
-    .card { flex: 1 1 0; min-width: 0; text-decoration: none; color: #1a1a1a; text-align: center; }
-    .card img { display: block; width: 100%; height: auto; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-    .card span { display: block; margin-top: 8px; font-size: 15px; font-weight: 700; }
+    #sticky-title { font-size: 18px; font-weight: 700; color: #1a1a1a; margin: 0; }
+    #sticky-cards { display: flex; width: 100%; gap: 12px; justify-content: center; }
+    .card { flex: 1; text-decoration: none; color: #1a1a1a; text-align: center; }
+    .card img { display: block; width: 100%; height: auto; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .card span { display: block; margin-top: 8px; font-size: 14px; font-weight: 700; }
   </style>
 
   <script>
     AFRAME.registerComponent('ar-controller', {
       init: function () {
         const target      = document.getElementById('target');
-        const logoPlane   = document.getElementById('plane-logo');
-        const birraPlane  = document.getElementById('plane-birra');
-        const relaisPlane = document.getElementById('plane-relais');
-        const photos      = document.getElementById('photos');
-
-        const frame       = document.getElementById('scan-frame');
+        const planeBirra  = document.getElementById('plane-birra');
+        const planeRelais = document.getElementById('plane-relais');
         const text        = document.getElementById('instruction-text');
         const sticky      = document.getElementById('sticky');
-        const stickyLogo  = document.getElementById('sticky-logo');
-        const stickyCards = document.getElementById('sticky-cards');
 
-        let revealed = false;
-
-        function toggleMenu() {
-          revealed = !revealed;
-          photos.setAttribute('visible', revealed);
-          stickyCards.classList.toggle('show', revealed);
-          text.innerText = revealed ? "Tocca Birre o Relais" : "Tocca il logo";
-        }
-
-        // Riconoscimento Target
+        // Gestione Target Trovato / Perso
         target.addEventListener('targetFound', () => {
-          frame.classList.add('hidden');
           sticky.classList.remove('show');
-          text.classList.remove('hidden');
-          text.innerText = revealed ? "Tocca Birre o Relais" : "Tocca il logo";
+          text.innerText = "Tocca Birre o Relais";
         });
 
         target.addEventListener('targetLost', () => {
           sticky.classList.add('show');
-          stickyCards.classList.toggle('show', revealed);
-          text.innerText = revealed ? "Tocca Birre o Relais" : "Inquadra il logo";
+          text.innerText = "Inquadra il logo per riattivare la realtà aumentata";
         });
 
-        // Click sui Modelli AR (tramite evento nativo A-Frame raycaster)
-        logoPlane.addEventListener('click', () => {
-          toggleMenu();
-        });
-
-        birraPlane.addEventListener('click', () => {
+        // Click sui singoli pulsanti 3D in AR
+        planeBirra.addEventListener('click', () => {
           window.location.href = "https://online.fliphtml5.com/kyszr/qcoy/#p=1";
         });
 
-        relaisPlane.addEventListener('click', () => {
+        planeRelais.addEventListener('click', () => {
           window.location.href = "https://www.youtube.com/watch?v=_ByuKkfsw5o";
-        });
-
-        stickyLogo.addEventListener('click', () => {
-          toggleMenu();
         });
       }
     });
@@ -132,21 +83,12 @@
 </head>
 <body>
 
-  <!-- Overlay UI -->
-  <div id="scanner-overlay">
-    <div class="scan-frame" id="scan-frame">
-      <div class="corner top-left"></div>
-      <div class="corner top-right"></div>
-      <div class="corner bottom-left"></div>
-      <div class="corner bottom-right"></div>
-      <div class="scan-line"></div>
-    </div>
-  </div>
-  <div id="instruction-text">Inquadra il logo per attivare la realtà aumentata</div>
+  <!-- Testo Informativo -->
+  <div id="instruction-text">Inquadra l'immagine per iniziare la scansione</div>
 
-  <!-- Menu Sticky Fallback -->
+  <!-- Menu Sticky Fallback (visibile quando il target viene perso) -->
   <div id="sticky">
-    <button id="sticky-logo" type="button"><img src="./logo.png" alt="Logo"></button>
+    <p id="sticky-title">Menu Rapido</p>
     <div id="sticky-cards">
       <a class="card" href="https://online.fliphtml5.com/kyszr/qcoy/#p=1" target="_blank">
         <img src="./birra.jpg" alt="Birre"><span>Birre</span>
@@ -160,7 +102,7 @@
   <!-- Scena AR -->
   <a-scene
     ar-controller
-    mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no; autoStart: true;"
+    mindar-image="imageTargetSrc: ./targets.mind; uiScanning: yes; autoStart: true; filterMinCF: 0.0001; filterBeta: 0.001;"
     color-space="sRGB"
     renderer="colorManagement: true, alpha: true"
     embedded
@@ -180,17 +122,17 @@
     <!-- Anchor AR -->
     <a-entity id="target" mindar-image-target="targetIndex: 0">
 
-      <!-- LOGO AR (Visibile da subito sopra l'immagine) -->
-      <a-plane id="plane-logo" class="clickable" position="0 0 0.02" width="1" height="0.71"
+      <!-- LOGO CENTRALE -->
+      <a-plane id="plane-logo" position="0 0.35 0.01" width="0.8" height="0.57"
                material="src: #img-logo; transparent: true; alphaTest: 0.2; shader: flat"></a-plane>
 
-      <!-- FOTO CHE COMPAIONO AL TOCCO DEL LOGO -->
-      <a-entity id="photos" position="0 -0.55 0.05" visible="false">
-        <a-plane id="plane-birra" class="clickable" position="-0.3 0 0" width="0.55" height="0.36"
-                 material="src: #img-birra; shader: flat"></a-plane>
-        <a-plane id="plane-relais" class="clickable" position="0.3 0 0" width="0.55" height="0.36"
-                 material="src: #img-relais; shader: flat"></a-plane>
-      </a-entity>
+      <!-- PULSANTE BIRRA (SINISTRA) -->
+      <a-plane id="plane-birra" class="clickable" position="-0.38 -0.25 0.02" width="0.5" height="0.33"
+               material="src: #img-birra; shader: flat"></a-plane>
+
+      <!-- PULSANTE RELAIS (DESTRA) -->
+      <a-plane id="plane-relais" class="clickable" position="0.38 -0.25 0.02" width="0.5" height="0.33"
+               material="src: #img-relais; shader: flat"></a-plane>
 
     </a-entity>
 
