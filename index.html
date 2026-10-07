@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Realtà Aumentata - Birre e Relais</title>
+
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+    }
+
+    /* ---- Mirino di scansione con angoli bianchi ---- */
+    #scanner-overlay {
+      position: fixed; inset: 0; z-index: 10; pointer-events: none;
+      display: flex; justify-content: center; align-items: center;
+    }
+    .scan-frame { width: 76vw; height: 57vw; max-width: 420px; max-height: 315px; position: relative; }
+    .corner { position: absolute; width: 30px; height: 30px; border-color: #fff; border-style: solid; }
+    .top-left     { top: 0;    left: 0;  border-width: 5px 0 0 5px; }
+    .top-right    { top: 0;    right: 0; border-width: 5px 5px 0 0; }
+    .bottom-left  { bottom: 0; left: 0;  border-width: 0 0 5px 5px; }
+    .bottom-right { bottom: 0; right: 0; border-width: 0 5px 5px 0; }
+    .scan-line {
+      position: absolute; width: 100%; height: 2px; background: #fff; box-shadow: 0 0 8px #fff;
+      animation: scanAnim 2s ease-in-out infinite alternate;
+    }
+    @keyframes scanAnim { 0% { top: 5%; } 100% { top: 95%; } }
+    .hidden { display: none !important; }
+
+    #instruction-text {
+      position: fixed; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); left: 50%;
+      transform: translateX(-50%); z-index: 20; pointer-events: none;
+      width: max-content; max-width: 92vw; text-align: center;
+      color: #fff; font-size: 15px; font-weight: 600; line-height: 1.3;
+      background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 20px;
+    }
+
+    #ver { position: fixed; left: 8px; bottom: calc(4px + env(safe-area-inset-bottom, 0px)); z-index: 20;
+           font-size: 10px; color: #fff; opacity: .45; pointer-events: none; }
+
+    /* ---- Pannello fisso sullo schermo (se il target esce dall'inquadratura) ---- */
+    #sticky {
+      position: fixed; left: 0; right: 0; margin: 0 auto; top: 46%; transform: translateY(-50%); box-sizing: border-box;
+      z-index: 30; display: none; flex-direction: column; align-items: center; gap: 16px;
+      padding: 18px; width: min(94vw, 540px);
+      background: rgba(255,255,255,0.95); border-radius: 22px; box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+    }
+    #sticky.show { display: flex; }
+    #sticky-logo { border: 0; background: transparent; padding: 4px; cursor: pointer; -webkit-appearance: none; appearance: none; }
+    #sticky-logo img { display: block; width: min(34vw, 150px); height: auto; pointer-events: none; }
+    #sticky-cards { display: none; width: 100%; gap: 10px; justify-content: center; align-items: flex-start; }
+    #sticky-cards.show { display: flex; }
+    .card {
+      flex: 1 1 0; min-width: 0; text-decoration: none; color: #1a1a1a; text-align: center;
+      -webkit-tap-highlight-color: transparent; border: 0; background: transparent; padding: 0;
+      font: inherit; cursor: pointer; -webkit-appearance: none; appearance: none;
+    }
+    .card img { display: block; width: 100%; height: auto; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .card.pol img { border-radius: 4px; background: linear-gradient(160deg, #8fb7c9, #cfe3ea); }
+    .card span { display: block; margin-top: 8px; font-size: 13px; font-weight: 700; line-height: 1.2; }
+
+    /* ---- Fotocamera con cornice polaroid ---- */
+    #booth { position: fixed; inset: 0; z-index: 100; background: #000; display: none; }
+    #booth.show { display: block; }
+    #booth-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+    #booth-frame { position: absolute; left: 0; top: 0; pointer-events: none; display: block; }
+    #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .4s; }
+    #booth-close {
+      position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: 12px; width: 44px; height: 44px;
+      border-radius: 50%; border: 0; background: rgba(0,0,0,0.55); color: #fff; font-size: 24px; line-height: 44px;
+      padding: 0; cursor: pointer; z-index: 3;
+    }
+    #booth-hint {
+      position: absolute; top: calc(18px + env(safe-area-inset-top, 0px)); left: 16px; z-index: 3;
+      color: #fff; font-size: 14px; font-weight: 600; background: rgba(0,0,0,0.55); padding: 8px 14px; border-radius: 16px;
+    }
+    #shutter {
+      position: absolute; left: 50%; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+      width: 74px; height: 74px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,0.25);
+      padding: 0; cursor: pointer; z-index: 3; -webkit-appearance: none; appearance: none;
+    }
+    #shutter::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: #fff; }
+    #shutter:active::after { background: #ddd; }
+
+    #result { position: absolute; inset: 0; background: #111; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; z-index: 5; }
+    #result.show { display: flex; }
+    #result-img { max-width: 92vw; max-height: calc(100% - 190px); width: auto; height: auto; box-shadow: 0 8px 30px rgba(0,0,0,0.6); -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
+    #result-hint { color: #bbb; font-size: 13px; text-align: center; padding: 0 20px; }
+    .rbtns { display: flex; gap: 12px; }
+    .rbtns button {
+      border: 0; border-radius: 24px; padding: 13px 22px; font-size: 16px; font-weight: 700; cursor: pointer;
+      background: #fff; color: #111;
+    }
+    .rbtns button.primary { background: #2e7d32; color: #fff; }
+    #result-close {
+      position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: 12px; width: 44px; height: 44px;
+      border-radius: 50%; border: 0; background: rgba(255,255,255,0.2); color: #fff; font-size: 24px; line-height: 44px; padding: 0; cursor: pointer;
+    }
+  </style>
+
+  <script>
+    /* ------------------------------------------------------------------
+       Etichetta (scritta) in AR: disegna il testo su un canvas e lo applica come texture
+       ------------------------------------------------------------------ */
+    AFRAME.registerComponent('ar-label', {
+      schema: { text: { type: 'string', default: '' }, ratio: { type: 'number', default: 0.14 } },
+      init: function () {
+        const self = this;
+        function build() {
+          const W = 1024, H = Math.round(W * self.data.ratio);
+          const c = document.createElement('canvas'); c.width = W; c.height = H;
+          const g = c.getContext('2d');
+          const r = H / 2;
+          g.fillStyle = 'rgba(12,22,16,0.82)';
+          g.beginPath();
+          g.moveTo(r, 0); g.lineTo(W - r, 0); g.arc(W - r, r, r, -Math.PI / 2, Math.PI / 2);
+          g.lineTo(r, H); g.arc(r, r, r, Math.PI / 2, Math.PI * 1.5); g.closePath(); g.fill();
+          let fs = Math.round(H * 0.58);
+          const font = (s) => 'bold ' + s + 'px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+          g.font = font(fs);
+          while (g.measureText(self.data.text).width > W - H * 0.9 && fs > 10) { fs -= 2; g.font = font(fs); }
+          g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText(self.data.text, W / 2, H / 2 + fs * 0.04);
+          const tex = new THREE.CanvasTexture(c);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.anisotropy = 4;
+          return tex;
+        }
+        const apply = function () {
+          const mesh = self.el.getObject3D('mesh');
+          if (!mesh || self._done) return;
+          self._done = true;
+          mesh.material.map = build();
+          mesh.material.transparent = true;
+          mesh.material.needsUpdate = true;
+        };
+        this.el.addEventListener('object3dset', apply);
+        apply();
+      }
+    });
+
+    AFRAME.registerComponent('ar-logo', {
+      init: function () {
+        const sceneEl = this.el;
+        const $ = (id) => document.getElementById(id);
+
+        const target     = $('target');
+        const logoGroup  = $('logo-group');
+        const photos     = $('photos');
+        const hitLogo    = $('hit-logo');
+        const hitBirra   = $('hit-birra');
+        const hitRelais  = $('hit-relais');
+        const hitPol     = $('hit-pol');
+        const frame      = $('scan-frame');
+        const text       = $('instruction-text');
+        const sticky     = $('sticky');
+        const stickyLogo = $('sticky-logo');
+        const stickyCards = $('sticky-cards');
+
+        const ENABLE_STICKY = true;   // false = nessun pannello quando il target esce dall'inquadratura
+        const HOLD_MS    = 30000;     // durata del pannello (30 secondi)
+        const LOST_DELAY = 600;       // ignora perdite brevi del target (ms)
+        const SNAP_PX    = 150;       // tocco "calamita": distanza massima dall'elemento (pixel)
+
+        const TXT_SCAN   = "Inquadra l'immagine con il logo per attivare la realtà aumentata";
+        const TXT_LOGO   = "Tocca il logo";
+        const TXT_CHOOSE = "Tocca una foto per aprirla";
+
+        let found = false, revealed = false, lostTimer = null, hideTimer = null, hideScaleTimer = null;
+        let boothOpen = false;
+
+        // ---------- stato: logo da solo / logo + foto + polaroid ----------
+        function applyState(animate) {
+          const dur = animate ? 450 : 1;
+          clearTimeout(hideScaleTimer);
+          if (revealed) {
+            photos.setAttribute('visible', 'true');
+            photos.setAttribute('scale', '0.001 0.001 0.001');
+            photos.setAttribute('animation__s', { property: 'scale', to: '1 1 1', dur: dur, easing: 'easeOutBack' });
+            logoGroup.setAttribute('animation__p', { property: 'position', to: '0 0.30 0.05', dur: dur, easing: 'easeInOutQuad' });
+            logoGroup.setAttribute('animation__k', { property: 'scale', to: '0.4 0.4 0.4', dur: dur, easing: 'easeInOutQuad' });
+            hitLogo.setAttribute('position', '0 0.30 0.12');
+            hitLogo.setAttribute('width', '0.3');
+            hitLogo.setAttribute('height', '0.14');
+            text.innerText = TXT_CHOOSE;
+          } else {
+            photos.setAttribute('animation__s', { property: 'scale', to: '0.001 0.001 0.001', dur: dur, easing: 'easeInQuad' });
+            hideScaleTimer = setTimeout(() => { if (!revealed) photos.setAttribute('visible', 'false'); }, dur + 30);
+            logoGroup.setAttribute('animation__p', { property: 'position', to: '0 0 0.05', dur: dur, easing: 'easeInOutQuad' });
+            logoGroup.setAttribute('animation__k', { property: 'scale', to: '1 1 1', dur: dur, easing: 'easeInOutQuad' });
+            hitLogo.setAttribute('position', '0 0 0.12');
+            hitLogo.setAttribute('width', '0.5');
+            hitLogo.setAttribute('height', '0.36');
+            text.innerText = TXT_LOGO;
+          }
+          stickyCards.classList.toggle('show', revealed);
+        }
+
+        function toggle() { revealed = !revealed; applyState(true); }
+
+        // ---------- target trovato / perso ----------
+        target.addEventListener('targetFound', () => {
+          found = true;
+          clearTimeout(lostTimer); clearTimeout(hideTimer);
+          frame.classList.add('hidden');
+          sticky.classList.remove('show');
+          text.classList.remove('hidden');
+          applyState(false);
+        });
+
+        target.addEventListener('targetLost', () => {
+          clearTimeout(lostTimer);
+          lostTimer = setTimeout(() => {
+            found = false;
+            if (ENABLE_STICKY) {
+              sticky.classList.add('show');
+              stickyCards.classList.toggle('show', revealed);
+              text.innerText = revealed ? TXT_CHOOSE : TXT_LOGO;
+              clearTimeout(hideTimer);
+              hideTimer = setTimeout(() => {
+                sticky.classList.remove('show');
+                frame.classList.remove('hidden');
+                text.innerText = TXT_SCAN;
+              }, HOLD_MS);
+            } else {
+              frame.classList.remove('hidden');
+              text.innerText = TXT_SCAN;
+            }
+          }, LOST_DELAY);
+        });
+
+        // Il logo nel pannello fisso apre/chiude le foto
+        stickyLogo.addEventListener('click', () => {
+          revealed = !revealed;
+          stickyCards.classList.toggle('show', revealed);
+          text.innerText = revealed ? TXT_CHOOSE : TXT_LOGO;
+          clearTimeout(hideTimer);
+          hideTimer = setTimeout(() => {
+            sticky.classList.remove('show');
+            frame.classList.remove('hidden');
+            text.innerText = TXT_SCAN;
+          }, HOLD_MS);
+        });
+
+        // ---------- tocco sugli elementi AR: raycast + "calamita" sul più vicino ----------
+        const activeHits = () => revealed ? [hitLogo, hitBirra, hitRelais, hitPol] : [hitLogo];
+
+        const handleTap = (e) => {
+          if (boothOpen || !found) return;
+          if (e.target.closest && e.target.closest('#sticky')) return;
+          const camera = sceneEl.camera;
+          if (!camera) return;
+
+          const x = e.clientX, y = e.clientY;
+          const ndc = new THREE.Vector2((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(ndc, camera);
+
+          const els = activeHits();
+          const hits = raycaster.intersectObjects(els.map(el => el.object3D), true);
+          let chosen = null;
+
+          if (hits.length > 0) {
+            let el = hits[0].object.el;
+            while (el && !el.classList.contains('hit')) el = el.parentElement;
+            chosen = el;
+          } else {
+            let bestD = Infinity;
+            els.forEach(el => {
+              const v = new THREE.Vector3();
+              el.object3D.getWorldPosition(v);
+              v.project(camera);
+              const sx = (v.x + 1) / 2 * window.innerWidth;
+              const sy = (1 - v.y) / 2 * window.innerHeight;
+              const d = Math.hypot(sx - x, sy - y);
+              if (d < bestD) { bestD = d; chosen = el; }
+            });
+            if (bestD > SNAP_PX) chosen = null;
+          }
+
+          if (!chosen) return;
+          if (chosen.dataset.action === 'toggle') { toggle(); return; }
+          if (chosen.dataset.action === 'booth') { openBooth(); return; }
+          if (chosen.dataset.url) window.location.href = chosen.dataset.url;
+        };
+
+        // =====================================================================
+        //  FOTOCAMERA CON CORNICE POLAROID
+        // =====================================================================
+        const booth     = $('booth');
+        const bVideo    = $('booth-video');
+        const bFrame    = $('booth-frame');
+        const bFlash    = $('flash');
+        const resultBox = $('result');
+        const resultImg = $('result-img');
+
+        // Finestra trasparente della polaroid (frazioni dell'immagine polaroid_ar.png)
+        const WIN = { x0: 0.0752, x1: 0.9304, y0: 0.0584, y1: 0.771 };
+        const FRAME_ASPECT = 1080 / 1288;
+        const PAD_TOP = 60, PAD_BOTTOM = 120;
+
+        let ownStream = null, lastBlob = null, lastUrl = null;
+
+        function layoutFrame() {
+          const W = window.innerWidth, H = window.innerHeight;
+          let w = W * 0.94;
+          let h = w / FRAME_ASPECT;
+          const maxH = H - PAD_TOP - PAD_BOTTOM;
+          if (h > maxH) { h = maxH; w = h * FRAME_ASPECT; }
+          bFrame.style.width = w + 'px';
+          bFrame.style.height = h + 'px';
+          bFrame.style.left = ((W - w) / 2) + 'px';
+          bFrame.style.top = (PAD_TOP + (maxH - h) / 2) + 'px';
+        }
+
+        async function openBooth() {
+          if (boothOpen) return;
+          boothOpen = true;
+          clearTimeout(hideTimer);
+          booth.classList.add('show');
+          resultBox.classList.remove('show');
+          layoutFrame();
+          const sys = sceneEl.systems['mindar-image-system'];
+          let stream = null;
+          try {
+            if (sys && sys.video && sys.video.srcObject) {
+              sys.pause(true);                 // ferma il riconoscimento, la fotocamera resta accesa
+              stream = sys.video.srcObject;
+            }
+          } catch (err) { console.warn(err); }
+          try {
+            if (!stream) {
+              ownStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+              stream = ownStream;
+            }
+            bVideo.srcObject = stream;
+            await bVideo.play();
+          } catch (err) { console.warn('Fotocamera non disponibile:', err); }
+        }
+
+        function closeBooth() {
+          if (!boothOpen) return;
+          boothOpen = false;
+          booth.classList.remove('show');
+          resultBox.classList.remove('show');
+          try { bVideo.pause(); } catch (e) {}
+          bVideo.srcObject = null;
+          if (ownStream) { ownStream.getTracks().forEach(t => t.stop()); ownStream = null; }
+          try {
+            const sys = sceneEl.systems['mindar-image-system'];
+            if (sys && sys.unpause) sys.unpause();
+          } catch (err) { console.warn(err); }
+          if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
+          lastBlob = null;
+          if (!found) {
+            sticky.classList.add('show');
+            stickyCards.classList.toggle('show', revealed);
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => {
+              sticky.classList.remove('show');
+              frame.classList.remove('hidden');
+              text.innerText = TXT_SCAN;
+            }, HOLD_MS);
+          }
+        }
+
+        function capture() {
+          const vw = bVideo.videoWidth, vh = bVideo.videoHeight;
+          if (!vw || !vh) return;
+          const OW = bFrame.naturalWidth || 1080, OH = bFrame.naturalHeight || 1288;
+          const vr = bVideo.getBoundingClientRect();
+          const fr = bFrame.getBoundingClientRect();
+          const s = Math.max(vr.width / vw, vr.height / vh);       // object-fit: cover
+          const ox = (vr.width - vw * s) / 2, oy = (vr.height - vh * s) / 2;
+
+          const e = 6;                                              // la foto passa leggermente sotto la cornice
+          const dx = OW * WIN.x0 - e, dy = OH * WIN.y0 - e;
+          const dw = OW * (WIN.x1 - WIN.x0) + 2 * e, dh = OH * (WIN.y1 - WIN.y0) + 2 * e;
+
+          // stesso rettangolo, in coordinate schermo e poi in coordinate del video
+          const sx = (fr.left - vr.left) + dx / OW * fr.width;
+          const sy = (fr.top  - vr.top)  + dy / OH * fr.height;
+          const sw = dw / OW * fr.width, sh = dh / OH * fr.height;
+          const srcX = (sx - ox) / s, srcY = (sy - oy) / s, srcW = sw / s, srcH = sh / s;
+
+          const c = document.createElement('canvas'); c.width = OW; c.height = OH;
+          const g = c.getContext('2d');
+          g.fillStyle = '#fff'; g.fillRect(0, 0, OW, OH);
+          g.drawImage(bVideo, srcX, srcY, srcW, srcH, dx, dy, dw, dh);
+          g.drawImage(bFrame, 0, 0, OW, OH);
+
+          bFlash.style.transition = 'none'; bFlash.style.opacity = '0.9';
+          requestAnimationFrame(() => { bFlash.style.transition = 'opacity .4s'; bFlash.style.opacity = '0'; });
+
+          c.toBlob((blob) => {
+            if (!blob) return;
+            if (lastUrl) URL.revokeObjectURL(lastUrl);
+            lastBlob = blob; lastUrl = URL.createObjectURL(blob);
+            resultImg.src = lastUrl;
+            resultBox.classList.add('show');
+          }, 'image/jpeg', 0.92);
+        }
+
+        async function saveOrShare() {
+          if (!lastBlob) return;
+          const file = new File([lastBlob], 'ricordo-relais.jpg', { type: 'image/jpeg' });
+          try {
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({ files: [file], title: 'Il mio ricordo dal Relais' });
+              return;
+            }
+          } catch (err) {
+            if (err && err.name === 'AbortError') return;
+          }
+          const a = document.createElement('a');
+          a.href = lastUrl; a.download = 'ricordo-relais.jpg';
+          document.body.appendChild(a); a.click(); a.remove();
+        }
+
+        $('shutter').addEventListener('click', capture);
+        $('booth-close').addEventListener('click', closeBooth);
+        $('result-close').addEventListener('click', closeBooth);
+        $('btn-retake').addEventListener('click', () => resultBox.classList.remove('show'));
+        $('btn-save').addEventListener('click', saveOrShare);
+        $('sticky-pol').addEventListener('click', openBooth);
+        window.addEventListener('resize', () => { if (boothOpen) layoutFrame(); });
+
+        sceneEl.addEventListener('loaded', () => {
+          window.addEventListener('pointerdown', handleTap);
+          photos.setAttribute('visible', 'false');
+        });
+      }
+    });
+  </script>
+</head>
+<body>
+
+  <!-- Mirino di scansione -->
+  <div id="scanner-overlay">
+    <div class="scan-frame" id="scan-frame">
+      <div class="corner top-left"></div>
+      <div class="corner top-right"></div>
+      <div class="corner bottom-left"></div>
+      <div class="corner bottom-right"></div>
+      <div class="scan-line"></div>
+    </div>
+  </div>
+  <div id="instruction-text">Inquadra l'immagine con il logo per attivare la realtà aumentata</div>
+  <div id="ver">v3</div>
+
+  <!-- Pannello fisso (compare se il logo esce dall'inquadratura, per 30 secondi) -->
+  <div id="sticky">
+    <button id="sticky-logo" type="button" aria-label="Logo"><img src="./logo.png" alt="Logo"></button>
+    <div id="sticky-cards">
+      <a class="card" href="https://online.fliphtml5.com/kyszr/qcoy/#p=1"><img src="./birra.jpg" alt="Birre"><span>Scegli le nostre birre</span></a>
+      <a class="card" href="https://www.youtube.com/watch?v=_ByuKkfsw5o"><img src="./relais.jpg" alt="Relais"><span>Fai un giro nel Relais</span></a>
+      <button class="card pol" id="sticky-pol" type="button"><img src="./polaroid_ar.png" alt="Polaroid"><span>Fatti un ricordo della serata</span></button>
+    </div>
+  </div>
+
+  <!-- Fotocamera con cornice polaroid -->
+  <div id="booth">
+    <video id="booth-video" autoplay muted playsinline></video>
+    <img id="booth-frame" src="./polaroid_ar.png" alt="">
+    <div id="booth-hint">Inquadra e scatta</div>
+    <button id="booth-close" type="button" aria-label="Chiudi">&times;</button>
+    <button id="shutter" type="button" aria-label="Scatta"></button>
+    <div id="flash"></div>
+    <div id="result">
+      <button id="result-close" type="button" aria-label="Chiudi">&times;</button>
+      <img id="result-img" alt="La tua foto">
+      <div id="result-hint">Se il pulsante non salva la foto, tieni premuta l'immagine e scegli "Salva"</div>
+      <div class="rbtns">
+        <button id="btn-retake" type="button">Rifai</button>
+        <button id="btn-save" type="button" class="primary">Salva / Condividi</button>
+      </div>
+    </div>
+  </div>
+
+  <a-scene
+    ar-logo
+    mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001; missTolerance: 15; warmupTolerance: 5;"
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <img id="img-logo"     src="./logo_ar.png">
+      <img id="img-birra"    src="./birra.jpg">
+      <img id="img-relais"   src="./relais.jpg">
+      <img id="img-polaroid" src="./polaroid_ar.png">
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- Target: immagine 1200x900 (logo + mosaico) -> larghezza 1, altezza 0.75 -->
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+
+      <!-- LOGO in AR: stessa posizione e dimensione del logo stampato, con una leggera pulsazione -->
+      <a-entity id="logo-group" position="0 0 0.05">
+        <a-plane width="0.3854" height="0.2839"
+                 material="src: #img-logo; transparent: true; alphaTest: 0.05; shader: flat"
+                 animation__pulse="property: scale; from: 1 1 1; to: 1.07 1.07 1.07; dir: alternate; dur: 900; easing: easeInOutSine; loop: true"></a-plane>
+      </a-entity>
+
+      <!-- Tutto ciò che compare toccando il logo -->
+      <a-entity id="photos" position="0 0 0.08" visible="false" scale="0.001 0.001 0.001">
+
+        <!-- Birra (sinistra) e Relais (destra): coprono il logo stampato al centro -->
+        <a-plane position="-0.25 0.01 0" width="0.5" height="0.3317"
+                 material="src: #img-birra; shader: flat"></a-plane>
+        <a-plane position="0.25 0.01 0" width="0.5" height="0.3317"
+                 material="src: #img-relais; shader: flat"></a-plane>
+        <!-- sottile divisore bianco -->
+        <a-plane position="0 0.01 0.001" width="0.006" height="0.3317"
+                 material="color: #ffffff; shader: flat"></a-plane>
+
+        <!-- Scritte sotto le foto -->
+        <a-plane position="-0.25 -0.196 0" width="0.5" height="0.07"
+                 material="shader: flat; transparent: true; color: #ffffff"
+                 ar-label="text: Scegli le nostre birre; ratio: 0.14"></a-plane>
+        <a-plane position="0.25 -0.196 0" width="0.5" height="0.07"
+                 material="shader: flat; transparent: true; color: #ffffff"
+                 ar-label="text: Fai un giro nel Relais; ratio: 0.14"></a-plane>
+
+        <!-- POLAROID sotto al biglietto: la finestra è trasparente e mostra la fotocamera dal vivo -->
+        <a-plane position="0 -0.699 0" width="0.46" height="0.5484"
+                 material="src: #img-polaroid; transparent: true; shader: flat; alphaTest: 0.02"></a-plane>
+        <a-plane position="0 -1.013 0" width="0.62" height="0.07"
+                 material="shader: flat; transparent: true; color: #ffffff"
+                 ar-label="text: Fatti un ricordo della serata; ratio: 0.113"></a-plane>
+      </a-entity>
+
+      <!-- AREE DI TOCCO invisibili, più grandi degli elementi visibili -->
+      <a-plane id="hit-logo" class="hit" data-action="toggle"
+               position="0 0 0.12" width="0.5" height="0.36"
+               material="transparent: true; opacity: 0; side: double"></a-plane>
+
+      <a-plane id="hit-birra" class="hit" data-url="https://online.fliphtml5.com/kyszr/qcoy/#p=1"
+               position="-0.25 -0.04 0.12" width="0.5" height="0.43"
+               material="transparent: true; opacity: 0; side: double"></a-plane>
+
+      <a-plane id="hit-relais" class="hit" data-url="https://www.youtube.com/watch?v=_ByuKkfsw5o"
+               position="0.25 -0.04 0.12" width="0.5" height="0.43"
+               material="transparent: true; opacity: 0; side: double"></a-plane>
+
+      <a-plane id="hit-pol" class="hit" data-action="booth"
+               position="0 -0.737 0.12" width="0.62" height="0.66"
+               material="transparent: true; opacity: 0; side: double"></a-plane>
+
+    </a-entity>
+
+  </a-scene>
+
+</body>
+</html>
